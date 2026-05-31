@@ -1,0 +1,6 @@
+{
+  "name": "NutriKos",
+  "description": "Asisten ahli gizi dan penulisan keuangan anak kos Indonesia. Menganalisis foto makanan dan budget makanan secara instan.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

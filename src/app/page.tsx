@@ -46,6 +46,7 @@ export default function App() {
   const [profile, setProfile] = useState<StudentProfile>(DEFAULT_PROFILE);
   const [logs, setLogs] = useState<MealLog[]>([]);
   const [showProfileEdit, setShowProfileEdit] = useState(false);
+  const [isProfileSaved, setIsProfileSaved] = useState(false);
   
   // Form input states
   const [harga, setHarga] = useState<number>(15000);
@@ -88,6 +89,7 @@ export default function App() {
         setEditBudget(parsed.weeklyBudget);
         setEditProtein(parsed.targetDailyProtein);
         setEditCalories(parsed.targetDailyCalories);
+        setIsProfileSaved(true);
       } catch (err) {
         console.error("Gagal meload profil:", err);
       }
@@ -145,7 +147,7 @@ export default function App() {
   };
 
   const checkProfileSetup = () => {
-    if (profile.name === "Anak Kos Teladan" && profile.weeklyBudget === 200000) {
+    if (!isProfileSaved) {
       setShowProfileEdit(true);
       return false; // blocks camera/upload until modal is closed/filled
     }
@@ -238,6 +240,7 @@ export default function App() {
     };
     setProfile(updated);
     localStorage.setItem(STORAGE_PROFILE_KEY, JSON.stringify(updated));
+    setIsProfileSaved(true);
     setShowProfileEdit(false);
   };
 

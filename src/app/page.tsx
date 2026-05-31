@@ -144,6 +144,14 @@ export default function App() {
     setErrorMsg(null);
   };
 
+  const checkProfileSetup = () => {
+    if (profile.name === "Anak Kos Teladan" && profile.weeklyBudget === 200000) {
+      setShowProfileEdit(true);
+      return false; // blocks camera/upload until modal is closed/filled
+    }
+    return true;
+  };
+
   const handleClearImage = () => {
     setSelectedImage(null);
     setSelectedMime(null);
@@ -305,6 +313,7 @@ export default function App() {
                 <div>
                   <div className="flex items-center gap-2 flex-wrap mb-1">
                     <span className="text-[10px] font-black uppercase text-black bg-violet-300 px-2 py-0.5 border-2 border-black tracking-[0.05em] shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">Sobat Anonim</span>
+                    <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest hidden sm:inline-block border border-slate-200 px-1.5 py-0.5 rounded-sm bg-slate-50">Login untuk menyimpan progress</span>
                     <button 
                       onClick={() => setShowProfileEdit(!showProfileEdit)}
                       className="text-[10px] font-black uppercase text-black bg-white hover:bg-slate-100 px-2 py-0.5 border-2 border-black tracking-wider transition-all active:translate-x-0.5 active:translate-y-0.5 shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] flex items-center gap-1"
@@ -496,6 +505,7 @@ export default function App() {
               onImageSelected={handleImageSelected}
               selectedImageUrl={selectedImage}
               onClear={handleClearImage}
+              onPreAction={checkProfileSetup}
             />
 
             {/* Input price */}

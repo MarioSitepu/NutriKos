@@ -105,7 +105,7 @@ export default function MetricGauges({
               </div>
               <div>
                 <h5 className="font-semibold text-slate-800 text-sm">Kalori Terdeteksi</h5>
-                <p className="text-[10px] text-slate-400 font-mono">Target: {targetCalories} kcal / Porsi</p>
+                <p className="text-[10px] text-slate-400 font-mono">Target: {Math.round(targetCalories)} kcal / Porsi</p>
               </div>
             </div>
             <div className="text-right">
@@ -135,7 +135,7 @@ export default function MetricGauges({
               </div>
               <div>
                 <h5 className="font-semibold text-slate-800 text-sm">Kandungan Protein</h5>
-                <p className="text-[10px] text-slate-400 font-mono">Target: {targetProtein}g / Porsi</p>
+                <p className="text-[10px] text-slate-400 font-mono">Target: {Math.round(targetProtein)}g / Porsi</p>
               </div>
             </div>
             <div className="text-right">

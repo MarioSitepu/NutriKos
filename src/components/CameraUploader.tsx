@@ -5,9 +5,10 @@ interface CameraUploaderProps {
   onImageSelected: (base64Data: string, mimeType: string, filename?: string) => void;
   selectedImageUrl: string | null;
   onClear: () => void;
+  onPreAction?: () => boolean;
 }
 
-export default function CameraUploader({ onImageSelected, selectedImageUrl, onClear }: CameraUploaderProps) {
+export default function CameraUploader({ onImageSelected, selectedImageUrl, onClear, onPreAction }: CameraUploaderProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -16,16 +17,21 @@ export default function CameraUploader({ onImageSelected, selectedImageUrl, onCl
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
 
-  // Stop camera stream on unmount
+  // Handle stream attachment and cleanup
   useEffect(() => {
+    if (cameraActive && stream && videoRef.current) {
+      videoRef.current.srcObject = stream;
+    }
+    
     return () => {
-      if (stream) {
+      if (stream && !cameraActive) {
         stream.getTracks().forEach((track) => track.stop());
       }
     };
-  }, [stream]);
+  }, [stream, cameraActive]);
 
   const handleStartCamera = async () => {
+    if (onPreAction && !onPreAction()) return;
     setCameraError(null);
     try {
       if (stream) {
@@ -33,15 +39,13 @@ export default function CameraUploader({ onImageSelected, selectedImageUrl, onCl
       }
       
       const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" }, // prefer rear camera for capturing meals
+        video: { facingMode: { ideal: "environment" } }, // prefer rear camera, fallback to front on PC
         audio: false,
       });
       
       setStream(mediaStream);
       setCameraActive(true);
-      if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream;
-      }
+      // The stream is attached via useEffect once the video element mounts
     } catch (err: any) {
       console.error("Gagal mengakses kamera:", err);
       setCameraError(
@@ -116,12 +120,14 @@ export default function CameraUploader({ onImageSelected, selectedImageUrl, onCl
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
+    if (onPreAction && !onPreAction()) return;
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       processFile(e.dataTransfer.files[0]);
     }
   };
 
   const triggerFileSelect = () => {
+    if (onPreAction && !onPreAction()) return;
     fileInputRef.current?.click();
   };
 
@@ -158,7 +164,7 @@ export default function CameraUploader({ onImageSelected, selectedImageUrl, onCl
         </div>
       ) : cameraActive ? (
         /* Video frame track */
-        <div className="relative rounded-2xl overflow-hidden border border-slate-200 bg-black aspect-video max-h-80 flex flex-col justify-between">
+        <div className="relative rounded-2xl overflow-hidden border-4 border-black bg-black aspect-video max-h-80 flex flex-col justify-between shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
           <video
             ref={videoRef}
             autoPlay
@@ -167,17 +173,17 @@ export default function CameraUploader({ onImageSelected, selectedImageUrl, onCl
             className="w-full h-full object-cover"
           />
           
-          <div className="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-black/80 to-transparent flex justify-between items-center z-10">
+          <div className="absolute inset-x-0 bottom-0 p-4 bg-black/60 border-t-4 border-black flex justify-between items-center z-10">
             <button
               onClick={handleStopCamera}
-              className="px-4 py-2 bg-slate-800 text-white hover:bg-slate-700 text-xs font-semibold rounded-xl transition-all"
+              className="px-4 py-2 border-2 border-black bg-white text-black hover:bg-slate-100 font-black uppercase text-[10px] tracking-wider rounded-xl transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5"
             >
-              Batal
+              Tutup
             </button>
 
             <button
               onClick={handleCapture}
-              className="p-4 bg-violet-600 text-white hover:bg-violet-500 rounded-full shadow-lg border border-white hover:scale-110 active:scale-95 transition-all"
+              className="p-4 bg-[#FF4F00] text-white hover:bg-[#e04500] rounded-full shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] border-3 border-black active:translate-x-1 active:translate-y-1 transition-all"
               title="Ambil Foto Makanan"
             >
               <Camera className="w-6 h-6" />

@@ -69,35 +69,54 @@ export default function App() {
   const [editProtein, setEditProtein] = useState(profile.targetDailyProtein);
   const [editCalories, setEditCalories] = useState(profile.targetDailyCalories);
 
-  // Load from local storage
+  // Load from database if authenticated
   useEffect(() => {
-    const savedLogs = localStorage.getItem(STORAGE_LOGS_KEY);
-    if (savedLogs) {
-      try {
-        setLogs(JSON.parse(savedLogs));
-      } catch (err) {
-        console.error("Gagal meload riwayat makanan:", err);
-      }
-    }
+    if (session?.user) {
+      // Fetch Profile
+      fetch('/api/profile')
+        .then(res => {
+          if(res.ok) return res.json();
+          throw new Error("Failed");
+        })
+        .then(data => {
+          if (data && !data.error) {
+            setProfile({
+              name: data.name || "Anak Kos Teladan",
+              weeklyBudget: data.weeklyBudget,
+              targetDailyProtein: data.targetDailyProtein,
+              targetDailyCalories: data.targetDailyCalories
+            });
+            setEditName(data.name || "Anak Kos Teladan");
+            setEditBudget(data.weeklyBudget);
+            setEditProtein(data.targetDailyProtein);
+            setEditCalories(data.targetDailyCalories);
+            setIsProfileSaved(true);
+          }
+        })
+        .catch(err => console.error("Gagal meload profil dari server:", err));
 
-    const savedProfile = localStorage.getItem(STORAGE_PROFILE_KEY);
-    if (savedProfile) {
-      try {
-        const parsed = JSON.parse(savedProfile);
-        setProfile(parsed);
-        setEditName(parsed.name);
-        setEditBudget(parsed.weeklyBudget);
-        setEditProtein(parsed.targetDailyProtein);
-        setEditCalories(parsed.targetDailyCalories);
-        setIsProfileSaved(true);
-      } catch (err) {
-        console.error("Gagal meload profil:", err);
-      }
+      // Fetch Logs
+      fetch('/api/logs')
+        .then(res => {
+          if(res.ok) return res.json();
+          throw new Error("Failed");
+        })
+        .then(data => {
+          if (Array.isArray(data)) {
+            setLogs(data);
+          }
+        })
+        .catch(err => console.error("Gagal meload riwayat dari server:", err));
+    } else {
+      // Not logged in, use defaults
+      setLogs([]);
+      setProfile(DEFAULT_PROFILE);
+      setIsProfileSaved(false);
     }
-
+    
     // Check API availability
     checkApiStatus();
-  }, []);
+  }, [session]);
 
   const checkApiStatus = async () => {
     try {
@@ -202,13 +221,27 @@ export default function App() {
         id: `log-${Date.now()}`,
         timestamp: new Date().toISOString(),
         harga: harga,
-        image: selectedImage,
+        image: selectedImage || undefined,
         analysis: result
       };
 
-      const updatedLogs = [newLog, ...logs];
-      setLogs(updatedLogs);
-      localStorage.setItem(STORAGE_LOGS_KEY, JSON.stringify(updatedLogs));
+      setLogs([newLog, ...logs]);
+      
+      if (session?.user) {
+        try {
+          await fetch('/api/logs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              harga,
+              image: selectedImage,
+              analysis: result
+            })
+          });
+        } catch(err) {
+          console.error("Failed saving log to db", err);
+        }
+      }
 
     } catch (err: any) {
       setErrorMsg(err?.message || "Terjadi gangguan server. Tidak dapat menganalisis.");
@@ -217,20 +250,33 @@ export default function App() {
     }
   };
 
-  const handleDeleteLog = (id: string) => {
+  const handleDeleteLog = async (id: string) => {
     const updated = logs.filter(log => log.id !== id);
     setLogs(updated);
-    localStorage.setItem(STORAGE_LOGS_KEY, JSON.stringify(updated));
-  };
-
-  const handleClearAllLogs = () => {
-    if (confirm("Apakah Anda yakin ingin menghapus semua riwayat kuliner dan reset sisa budget?")) {
-      setLogs([]);
-      localStorage.removeItem(STORAGE_LOGS_KEY);
+    
+    if (session?.user) {
+      try {
+        await fetch(`/api/logs?id=${id}`, { method: 'DELETE' });
+      } catch (err) {
+        console.error("Gagal menghapus log:", err);
+      }
     }
   };
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+  const handleClearAllLogs = async () => {
+    if (confirm("Apakah Anda yakin ingin menghapus semua riwayat kuliner dan reset sisa budget?")) {
+      setLogs([]);
+      if (session?.user) {
+        try {
+          await fetch('/api/logs', { method: 'DELETE' });
+        } catch (err) {
+          console.error("Gagal mereset data di server", err);
+        }
+      }
+    }
+  };
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     const updated: StudentProfile = {
       name: editName || "Anak Kos Teladan",
@@ -239,9 +285,20 @@ export default function App() {
       targetDailyCalories: Number(editCalories) || 2000
     };
     setProfile(updated);
-    localStorage.setItem(STORAGE_PROFILE_KEY, JSON.stringify(updated));
     setIsProfileSaved(true);
     setShowProfileEdit(false);
+    
+    if (session?.user) {
+      try {
+        await fetch('/api/profile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updated)
+        });
+      } catch(err) {
+        console.error("Failed saving profile to db", err);
+      }
+    }
   };
 
   // Finance calculations

@@ -229,7 +229,7 @@ export default function App() {
       
       if (session?.user) {
         try {
-          await fetch('/api/logs', {
+          const res = await fetch('/api/logs', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -238,6 +238,10 @@ export default function App() {
               analysis: result
             })
           });
+          if (res.ok) {
+            const savedLog = await res.json();
+            setLogs(prev => prev.map(l => l.id === newLog.id && savedLog.id ? { ...l, id: savedLog.id } : l));
+          }
         } catch(err) {
           console.error("Failed saving log to db", err);
         }

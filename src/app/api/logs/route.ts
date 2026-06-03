@@ -95,8 +95,11 @@ export async function DELETE(req: NextRequest) {
     const id = req.nextUrl.searchParams.get("id");
 
     if (id) {
-      await prisma.mealLog.delete({
-        where: { id: id },
+      await prisma.mealLog.deleteMany({
+        where: { 
+          id: id,
+          userId: user.id 
+        },
       });
     } else {
       await prisma.mealLog.deleteMany({

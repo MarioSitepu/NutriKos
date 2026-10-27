@@ -90,21 +90,27 @@ export async function POST(req: Request) {
 
       const userPrompt = `Analisis makanan dalam foto ini yang harganya Rp ${priceNum.toLocaleString("id-ID")}. Hubungkan kandungan energinya dengan harga tersebut untuk mengevaluasi apakah sepadan dan memberikan alternatif makanan sehat yang lebih hemat bagi anak kos.`;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: [
-          {
-            inlineData: {
-              data: cleanBase64,
-              mimeType: mimeType,
-            },
-          },
-          {
-            text: userPrompt
-          }
-        ],
-        config: {
-          systemInstruction: `Kamu adalah asisten ahli gizi dan penasihat keuangan mikro hiper-lokal yang dirancang khusus untuk mahasiswa dan anak kos di Indonesia. Tugas utamamu adalah menganalisis foto makanan yang diunggah pengguna, mengestimasi kandungan nutrisinya, dan memberikan saran kelangsungan hidup anak kos yang berimbang antara kesehatan (agar tidak mudah sakit) dan penghematan biaya.
+      let response;
+      let retries = 3;
+      let lastError;
+
+      while (retries > 0) {
+        try {
+          response = await ai.models.generateContent({
+            model: "gemini-3.5-flash",
+            contents: [
+              {
+                inlineData: {
+                  data: cleanBase64,
+                  mimeType: mimeType,
+                },
+              },
+              {
+                text: userPrompt
+              }
+            ],
+            config: {
+              systemInstruction: `Kamu adalah asisten ahli gizi dan penasihat keuangan mikro hiper-lokal yang dirancang khusus untuk mahasiswa dan anak kos di Indonesia. Tugas utamamu adalah menganalisis foto makanan yang diunggah pengguna, mengestimasi kandungan nutrisinya, dan memberikan saran kelangsungan hidup anak kos yang berimbang antara kesehatan (agar tidak mudah sakit) dan penghematan biaya.
 
 Konteks Pengguna:
 Pengguna adalah mahasiswa dengan budget terbatas yang sering kali mengorbankan gizi demi berhemat (misalnya sering makan mi instan, gorengan, atau nasi dengan kuah saja). Mereka membutuhkan evaluasi instan apakah makanan yang akan mereka makan ini sepadan harganya dan cukup menunjang daya tahan tubuh mereka untuk mengerjakan tugas kuliah.
@@ -117,42 +123,70 @@ Berikan respons Anda dalam format model terstruktur JSON yang berisi properti be
 - protein_gram: Estimasi kandungan protein total dalam gram (sebagai nominal integer, misal 14).
 - status_gizi: Deskripsi ketat singkat jernih dalam bahasa Indonesia mengenai keseimbangan gizi (terutama apakah cukup menyokong kesehatan daya tahan tubuh anak kos untuk begadang/kuliah dibanding karbohidrat/lemak jenuh berlebih).
 - evaluasi_budget: Evaluasi keuangan mikro apakah harga tersebut sepadan (worth it) atas gizi yang diterima, dan berikan satu opsi alternatif menu lauk warteg/kosan nyata yang lebih murah namun lebih tinggi protein/gizi (misal: nasi sup + telur rebus + tempe bacem) jika makanan saat ini dinilai kurang sehat atau kurang rasional.`,
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              nama_makanan: {
-                type: Type.STRING,
-                description: "Nama makanan Indonesia yang terdeteksi"
-              },
-              kalori_estimasi: {
-                type: Type.INTEGER,
-                description: "Estimasi total kalori dalam nominal integer"
-              },
-              protein_gram: {
-                type: Type.INTEGER,
-                description: "Estimasi protein dalam gram (nominal integer)"
-              },
-              status_gizi: {
-                type: Type.STRING,
-                description: "Analisis singkat nutrisi dan stamina"
-              },
-              evaluasi_budget: {
-                type: Type.STRING,
-                description: "Evaluasi harga dan alternatif menu warteg sehat murah"
+              responseMimeType: "application/json",
+              responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                  nama_makanan: {
+                    type: Type.STRING,
+                    description: "Nama makanan Indonesia yang terdeteksi"
+                  },
+                  kalori_estimasi: {
+                    type: Type.INTEGER,
+                    description: "Estimasi total kalori dalam nominal integer"
+                  },
+                  protein_gram: {
+                    type: Type.INTEGER,
+                    description: "Estimasi protein dalam gram (nominal integer)"
+                  },
+                  status_gizi: {
+                    type: Type.STRING,
+                    description: "Analisis singkat nutrisi dan stamina"
+                  },
+                  evaluasi_budget: {
+                    type: Type.STRING,
+                    description: "Evaluasi harga dan alternatif menu warteg sehat murah"
+                  }
+                },
+                required: ["nama_makanan", "kalori_estimasi", "protein_gram", "status_gizi", "evaluasi_budget"]
               }
-            },
-            required: ["nama_makanan", "kalori_estimasi", "protein_gram", "status_gizi", "evaluasi_budget"]
+            }
+          });
+          break; // Jika sukses, keluar dari loop
+        } catch (error: any) {
+          lastError = error;
+          
+          if (error?.status === 503 && retries > 1) {
+            console.log(`Gemini server sibuk (503). Mencoba ulang... (Sisa: ${retries - 1})`);
+            retries--;
+            await new Promise(res => setTimeout(res, 2000));
+          } else if (error?.status === 429) {
+            console.warn("API Key Anda telah mencapai batas maksimal kuota (Rate Limit/Quota Exhausted).");
+            throw error; // Langsung lempar ke simulator
+          } else {
+            throw error; // Lempar error lain
           }
         }
-      });
+      }
 
-      const responseText = response.text;
+      const responseText = response?.text;
       if (!responseText) {
         throw new Error("Gemini tidak mengembalikan respons teks.");
       }
 
-      const parsedResult = JSON.parse(responseText.trim());
+      let cleanJson = responseText.trim();
+      if (cleanJson.startsWith("```json")) {
+        cleanJson = cleanJson.substring(7);
+      }
+      if (cleanJson.startsWith("```")) {
+        cleanJson = cleanJson.substring(3);
+      }
+      if (cleanJson.endsWith("```")) {
+        cleanJson = cleanJson.substring(0, cleanJson.length - 3);
+      }
+      cleanJson = cleanJson.trim();
+
+      const parsedResult = JSON.parse(cleanJson);
       return NextResponse.json(parsedResult);
 
     } catch (err: any) {

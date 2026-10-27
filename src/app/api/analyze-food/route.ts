@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { GoogleGenAI, Type } from "@google/genai";
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 30;
 
 let aiClient: GoogleGenAI | null = null;
 
@@ -84,6 +85,15 @@ export async function POST(req: Request) {
 
       if (!image || !mimeType) {
         return NextResponse.json({ error: "Harap lampirkan foto makanan terlebih dahulu." }, { status: 400 });
+      }
+
+      // Safety guard against oversized payload (> 4.5MB limit on Vercel)
+      const approxBytes = Math.round((image.length * 3) / 4);
+      if (approxBytes > 4.5 * 1024 * 1024) {
+        return NextResponse.json(
+          { error: "Ukuran gambar terlalu besar (> 4.5MB). Harap gunakan foto dengan resolusi lebih wajar." },
+          { status: 413 }
+        );
       }
 
       const cleanBase64 = image.replace(/^data:image\/[a-zA-Z]+;base64,/, "");

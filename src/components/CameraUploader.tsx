@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Camera, Upload, Trash2, Video, RefreshCw, AlertCircle } from "lucide-react";
+import { Camera, Upload, Trash2, Video, RefreshCw, AlertCircle, Loader2 } from "lucide-react";
+import { compressImage } from "../lib/imageUtils";
 
 interface CameraUploaderProps {
   onImageSelected: (base64Data: string, mimeType: string, filename?: string) => void;
@@ -10,6 +11,7 @@ interface CameraUploaderProps {
 
 export default function CameraUploader({ onImageSelected, selectedImageUrl, onClear, onPreAction }: CameraUploaderProps) {
   const [isDragging, setIsDragging] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   
@@ -57,14 +59,28 @@ export default function CameraUploader({ onImageSelected, selectedImageUrl, onCl
   const handleCapture = () => {
     if (videoRef.current) {
       const video = videoRef.current;
+      let width = video.videoWidth || 640;
+      let height = video.videoHeight || 480;
+      const maxDim = 1280;
+
+      if (width > maxDim || height > maxDim) {
+        if (width > height) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        } else {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+      }
+
       const canvas = document.createElement("canvas");
-      canvas.width = video.videoWidth || 640;
-      canvas.height = video.videoHeight || 480;
+      canvas.width = width;
+      canvas.height = height;
       
       const ctx = canvas.getContext("2d");
       if (ctx) {
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const base64Data = canvas.toDataURL("image/jpeg");
+        ctx.drawImage(video, 0, 0, width, height);
+        const base64Data = canvas.toDataURL("image/jpeg", 0.85);
         onImageSelected(base64Data, "image/jpeg", "makanan_kamera.jpg");
         
         // Stop stream
@@ -85,31 +101,45 @@ export default function CameraUploader({ onImageSelected, selectedImageUrl, onCl
     setCameraActive(false);
   };
 
-  const processFile = (file: File) => {
+  const processFile = async (file: File) => {
     if (!file.type.startsWith("image/")) {
       alert("Jenis file yang diunggah harus berupa gambar (JPG, PNG, WEBP).");
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        onImageSelected(reader.result, file.type, file.name);
-      }
-    };
-    reader.readAsDataURL(file);
+    setIsProcessing(true);
+    setCameraError(null);
+
+    try {
+      // Auto-compress and scale image client-side to safely fit Vercel payload limit (<4.5MB)
+      const compressed = await compressImage(file, 1280, 0.82);
+      onImageSelected(compressed.base64, compressed.mimeType, file.name);
+    } catch (err: any) {
+      console.warn("Gagal mengompresi gambar, menggunakan file asli:", err);
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result === "string") {
+          onImageSelected(reader.result, file.type, file.name);
+        }
+      };
+      reader.readAsDataURL(file);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       processFile(e.target.files[0]);
     }
+    // Reset file input so user can select the same file again if desired
+    e.target.value = "";
   };
 
   // Drag and drop handlers
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
-    setIsDragging(true);
+    if (!isProcessing) setIsDragging(true);
   };
 
   const handleDragLeave = (e: React.DragEvent) => {
@@ -120,6 +150,7 @@ export default function CameraUploader({ onImageSelected, selectedImageUrl, onCl
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
+    if (isProcessing) return;
     if (onPreAction && !onPreAction()) return;
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       processFile(e.dataTransfer.files[0]);
@@ -127,6 +158,7 @@ export default function CameraUploader({ onImageSelected, selectedImageUrl, onCl
   };
 
   const triggerFileSelect = () => {
+    if (isProcessing) return;
     if (onPreAction && !onPreAction()) return;
     fileInputRef.current?.click();
   };
@@ -213,32 +245,48 @@ export default function CameraUploader({ onImageSelected, selectedImageUrl, onCl
             className="hidden"
           />
 
-          <div className="flex flex-col items-center justify-center space-y-4">
-            <div className="p-4 rounded-full bg-violet-50 text-violet-600">
-              <Upload className="w-7 h-7" />
+          {isProcessing ? (
+            <div className="flex flex-col items-center justify-center space-y-3 py-6">
+              <div className="p-4 rounded-full bg-violet-100 text-violet-600">
+                <Loader2 className="w-8 h-8 animate-spin" />
+              </div>
+              <div className="text-center">
+                <p className="font-bold text-slate-800 text-sm md:text-base">
+                  Mengompresi & Mengoptimalkan Foto...
+                </p>
+                <p className="text-xs text-slate-500 mt-1 font-sans">
+                  Menyesuaikan resolusi agar hemat kuota dan proses analisis super cepat
+                </p>
+              </div>
             </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center space-y-4">
+              <div className="p-4 rounded-full bg-violet-50 text-violet-600">
+                <Upload className="w-7 h-7" />
+              </div>
 
-            <div>
-              <p className="font-semibold text-slate-700 text-sm md:text-base">
-                Tarik foto makanan Anda ke sini, atau <span className="text-violet-600 underline">klik untuk mencari</span>
-              </p>
-              <p className="text-xs text-slate-400 mt-1 font-sans">
-                Mendukung gambar JPG, JPEG, PNG, atau WEBP hingga 15MB.
-              </p>
-            </div>
+              <div>
+                <p className="font-semibold text-slate-700 text-sm md:text-base">
+                  Tarik foto makanan Anda ke sini, atau <span className="text-violet-600 underline">klik untuk mencari</span>
+                </p>
+                <p className="text-xs text-slate-400 mt-1 font-sans">
+                  Mendukung JPG, JPEG, PNG, atau WEBP. Foto resolusi tinggi otomatis dioptimalkan.
+                </p>
+              </div>
 
-            {/* Optional Mobile Camera quick activator */}
-            <div className="flex gap-2.5 pt-2" onClick={(e) => e.stopPropagation()}>
-              <button
-                type="button"
-                onClick={handleStartCamera}
-                className="flex items-center gap-1.5 px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold rounded-xl shadow-xs hover:shadow-md transition-all duration-200"
-              >
-                <Camera className="w-3.5 h-3.5" />
-                Ambil lewat Kamera Kost
-              </button>
+              {/* Optional Mobile Camera quick activator */}
+              <div className="flex gap-2.5 pt-2" onClick={(e) => e.stopPropagation()}>
+                <button
+                  type="button"
+                  onClick={handleStartCamera}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold rounded-xl shadow-xs hover:shadow-md transition-all duration-200"
+                >
+                  <Camera className="w-3.5 h-3.5" />
+                  Ambil lewat Kamera Kost
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 
